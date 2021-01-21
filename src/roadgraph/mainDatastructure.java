@@ -1,0 +1,1117 @@
+package roadgraph;
+
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.PriorityQueue;
+import java.util.Set;
+import java.util.function.Consumer;
+
+import geography.GeographicPoint;
+import util.GraphLoader;
+
+/**
+ * @author UCSD MOOC development team
+ * Arjun Singh and Royali Bahri
+ * 
+ * 
+ */
+public class mainDatastructure {
+	
+	private int numberOfVertices;
+	private int numberOfEdges;
+	
+	// the set of unique geographic coordinates in the graph
+	private Set<GeographicPoint> nodeCoordinates;
+	
+	// store nodes in a hashmap of hashmaps to save storage space
+	// and access in constant time by geographic coordinate
+	private HashMap<Double,HashMap<Double,MapIntersection>> graph;
+// constructr will create a new empty map //
+	public mainDatastructure() {
+		numberOfVertices = 0;
+		numberOfEdges = 0;
+		
+		// taking double x coordinate and latitude
+		graph = new HashMap<Double,HashMap<Double,MapIntersection>>();
+		nodeCoordinates = new HashSet<GeographicPoint>(numberOfVertices);
+	}
+	
+	// getting number of vertices of the graph //
+	public int getNumVertices() {
+		return numberOfVertices;
+	}
+	
+	// just return the coordinates of intersection like latitude and longitude, here it is combined
+	public Set<GeographicPoint> getVertices() {
+		return nodeCoordinates;
+	}
+	
+	// getting the number of edges or road segments 
+	public int getNumEdges() {
+		return numberOfEdges;
+	}
+
+	
+	
+	// Add a node corresponding to an intersection at a Geographic Point
+	 //If the location is already in the graph or null, this method does 
+	 // not change the graph.
+	 // @param location  The location of the intersection
+	 // @return true if a node was added, false if it was not (the node
+	 // was already in the graph, or the parameter is null).
+	 //
+	public boolean addVertex(GeographicPoint location) {
+		
+		if (location == null){
+			
+			return false;
+		}
+		else if ( (graph.get(location.x) != null) &&
+				  (graph.get(location.x).get(location.y) != null) ) {
+
+			return false;
+		}
+		else {
+			// create a new node with the new  location coordinates x and y
+			MapIntersection node = new MapIntersection(location.x, location.y);
+			// declare a variable to hold the map from Y coord (given X coord) to node
+			HashMap<Double,MapIntersection> nodes;
+			
+			if ( graph.get(location.x) != null ) {
+				// if X coord part of a node in the graph, get X coord's map of Y coords to nodes
+				nodes = graph.get(location.x);
+				// put the Y coord in the X's coord's map as a key to the new node
+				nodes.put((Double)location.y, node);
+				nodeCoordinates.add(location);
+			}
+			else {
+				// if not, create a new map first
+				nodes = new HashMap<Double,MapIntersection>(4);
+				// put the Y coord in the X coord's map
+				nodes.put((Double)location.y, node);
+				// and put the X coord's map in the graph
+				graph.put((Double)location.x, nodes);
+				nodeCoordinates.add(location);
+			}
+			
+			numberOfVertices++;
+			return true;
+		}
+	}
+	
+	// validating that in case null passing to the geographic point and if road name, road type is null or missing  in .map file
+	// if distance is 0 throw a Illegal argument Exception 
+	public void addEdge(GeographicPoint from, GeographicPoint to, String roadName,
+			String roadType, double length) throws IllegalArgumentException {
+		
+		// catch all the illegal argument exceptions
+		if ( (graph.get(from.x) == null) ||
+			 (graph.get(from.x).get(from.y) == null) ) {
+			throw new IllegalArgumentException(from.toString());
+		} else if ( (graph.get(to.x) == null) ||
+				    (graph.get(to.x).get(to.y) == null) ) {		
+			throw new IllegalArgumentException(to.toString());
+		} else if (roadName == null) {
+			throw new IllegalArgumentException(roadName+"Missing the name of road");
+		} else if (roadType == null) {
+			throw new IllegalArgumentException(roadType+"Missing road type");
+		} 
+		
+		// get the two nodes that created 
+		MapIntersection fromNode = graph.get(from.x).get(from.y);
+		MapIntersection toNode = graph.get(to.x).get(to.y);
+		
+		// here creating   the new MapEdge
+		MapEdge edgeToAdd = new MapEdge(fromNode, toNode,
+				                        roadName, roadType, length);
+		
+		// add "to" to "from"'s adjacency list that we create before 
+		fromNode.getNeighbors().add(edgeToAdd);
+		++numberOfEdges;
+		
+	}
+	
+
+	// Method that implement BFS  where start shows starting location 
+	// goal shows  final destination 
+	// return the a path that is shortest and un- weighted 
+	
+	public Path bfs(GeographicPoint start, GeographicPoint goal) {
+		// calling search algo witha demo variable for testing 
+        Consumer<GeographicPoint> temp = (x) -> {};
+        return bfs(start, goal, temp);
+	}
+	
+	// method for Breadth first search implementation , as it uses the queue which has properties like
+	// enqueue- entering elements in the queue
+	// dequeue- poping elements from the queue //
+	public Path bfs(GeographicPoint start, 
+			 			  GeographicPoint goal,
+			 	   	      Consumer<GeographicPoint> nodeSearched) {	
+	// incase start and goal is not present or does not exit yet 
+		if ( (graph.get(start.x) == null) ||
+				  (graph.get(start.x).get(start.y) == null) ) {
+			return null;
+		}
+		else if ( (graph.get(goal.x) == null) ||
+				  (graph.get(goal.x).get(goal.y) == null) ) {
+			return null;
+		}
+		
+		// assign the start and goal nodes
+		MapIntersection startNode = graph.get(start.x).get(start.y);
+		MapIntersection goalNode = graph.get(goal.x).get(goal.y);
+
+	// using ArrayDequeue to do deque process
+		ArrayDeque<MapIntersection> toProcess = new ArrayDeque<MapIntersection>();
+		// using haset to makr visited nodes 
+		HashSet<MapIntersection> visited = new HashSet<MapIntersection>(numberOfVertices*2);
+		// creating the new Map with double number of vertices //
+		HashMap<MapIntersection,MapEdge> roadMap = 
+				new HashMap<MapIntersection,MapEdge>(numberOfVertices*2);
+		List<MapEdge> currentNeighbors;
+		MapIntersection currentNode;
+	
+		visited.add(startNode);	
+		toProcess.add(startNode);
+	// keep history to all parent  nodes
+		
+		while (!toProcess.isEmpty()==true ) {
+			
+			currentNode = toProcess.remove(); // dequeue
+			nodeSearched.accept(currentNode);
+
+			if (currentNode.equals(goalNode)) {
+				// call the helper method to return shortest path
+				return codifyPath(startNode, goalNode, roadMap);
+			}
+				
+			currentNeighbors = currentNode.getNeighbors();
+			
+			for (MapEdge neighbor : currentNeighbors) {
+				
+				if (!visited.contains(neighbor.getToIntersection())){
+					
+					visited.add(neighbor.getToIntersection());
+					toProcess.add(neighbor.getToIntersection());
+					roadMap.put(neighbor.getToIntersection(), neighbor);
+				}
+			}
+		}
+		
+		return null;
+	}
+	
+	/** Codify the path from start to goal using "parents" of each node on
+	 * a previously found path from goal to start.
+	 * 
+	 * Helper method for shortest path methods.
+	 * 
+	 * @param startNode: The starting location
+	 * @param goalNode: The goal location
+	 * @param roadMap: The map of end nodes of a road segment to the 
+	 * 				   road that was taken to get to that node
+	 * @return A path from start to goal (including both startNode and goalNode).
+	 */
+	private Path codifyPath(MapIntersection startNode,
+							MapIntersection goalNode, 
+							HashMap<MapIntersection,MapEdge> roadMap) {
+
+		List<GeographicPoint> shortestPath = new ArrayList<GeographicPoint>(numberOfVertices);
+		List<MapEdge> roadsTraveled = new ArrayList<MapEdge>();
+		
+		shortestPath.add(goalNode);
+		
+		GeographicPoint currentNode, parentNode;
+		MapEdge roadTraveled;
+		int pathHop = 0;
+		double length = 0, travelTime = 0;
+		
+		/* while the last node added to the path is not the startNode,
+		   add the parent of the node at the current path "hop" to the path */
+		while (!shortestPath.get(shortestPath.size()-1).equals(startNode)) {
+			
+			currentNode = shortestPath.get(pathHop);
+			roadTraveled = roadMap.get(currentNode);
+			parentNode = roadTraveled.getFromIntersection();
+			shortestPath.add(parentNode);
+			roadsTraveled.add(roadTraveled);
+			length += roadTraveled.getLength();
+			travelTime += roadTraveled.getTravelTime();
+			pathHop++;
+		}
+		// reverse the path so startNode is first and goalNode is last
+		Collections.reverse(shortestPath);
+		Collections.reverse(roadsTraveled);
+		Path path = new Path(shortestPath, roadsTraveled, length, travelTime);
+		return path;
+	}
+
+	/** Find the path from start to goal using Dijkstra's algorithm
+	 * 
+	 * @param start The starting location
+	 * @param goal The goal location
+	 * @return The shortest path from start to goal (including both start and goal).
+	 */
+	public Path dijkstra(GeographicPoint start, 
+							   GeographicPoint goal) {
+		// Dummy variable for calling the search algorithms
+		// You do not need to change this method-ucsd team.
+        Consumer<GeographicPoint> temp = (x) -> {};
+        return dijkstra(start, goal, temp);
+	}
+	
+	/** Find the path from start to goal using Dijkstra's algorithm
+	 * 
+	 * @param start The starting location
+	 * @param goal The goal location
+	 * @param nodeSearched A hook for visualization.  See assignment instructions for how to use it.
+	 * @return The shortest path from start to goal (including both start and goal).
+	 */
+	public Path dijkstra(GeographicPoint start, 
+							   GeographicPoint goal, 
+							   Consumer<GeographicPoint> nodesSearched) {
+		// if the start or goal do not exist in the graph, return null
+		if ( (graph.get(start.x) == null) ||
+				  (graph.get(start.x).get(start.y) == null) ) {
+			return null;
+		}
+		else if ( (graph.get(goal.x) == null) ||
+				  (graph.get(goal.x).get(goal.y) == null) ) {
+			return null;
+		}
+		
+		// assign the start and goal nodes
+		MapIntersection startNode = graph.get(start.x).get(start.y);
+		MapIntersection goalNode = graph.get(goal.x).get(goal.y);
+
+		// to get distance we need priority queue of a path 
+	
+		// it has hashmap of many nodes of unique path and a distance from start to goal 
+		// dij slgo uses metrics like time travel , distance , and number of nodes 
+	
+		PriorityQueue<HashMap<MapIntersection, Double>> toProcess = 
+			new PriorityQueue<HashMap<MapIntersection, Double>>(10,
+				new Comparator<HashMap<MapIntersection, Double>>() {
+					public int compare(HashMap<MapIntersection, Double> mapOne, 
+						HashMap<MapIntersection, Double> mapTwo) {
+							return ((Double)mapOne.get((MapIntersection)mapOne.keySet().toArray()[0])).compareTo((Double)mapTwo.get((MapIntersection)mapTwo.keySet().toArray()[0]));
+						}
+				});
+		
+		// initialize or declare data structures for: nodes processed, 
+		// processed node parents, current node, current neighbors, current 
+		// best distances to nodes, roads taken, and shortest path to goal
+		HashSet<MapIntersection> visited = 
+				new HashSet<MapIntersection>(numberOfVertices*2);
+		HashMap<MapIntersection,MapEdge> roadMap =
+				new HashMap<MapIntersection,MapEdge>(numberOfVertices*2);
+		HashMap<MapIntersection, Double> distance =
+				new HashMap<MapIntersection, Double>(numberOfVertices*2);
+		HashMap<MapIntersection,Double> currentNodeWithDist;
+		MapIntersection currentNode;
+		List<MapEdge> currentNeighbors;
+		
+		// distance to all other nodes are infinity//
+		// got distance then put into the graph esle mark all distances as infinite betwwen all nodes 
+		Set<GeographicPoint> allCoordinates = getVertices();
+		for (GeographicPoint coordinate : allCoordinates) {
+			if (coordinate.x == start.x && coordinate.y == start.y) {
+				distance.put(graph.get(coordinate.x).get(coordinate.y), 
+						      0.0);
+			}
+			else {
+				distance.put(graph.get(coordinate.x).get(coordinate.y),
+						      Double.POSITIVE_INFINITY);
+			}
+		}
+		// keeping track on  parents nodes 
+		currentNodeWithDist = new HashMap<MapIntersection, Double>();
+		currentNodeWithDist.put(startNode, distance.get(startNode));
+		toProcess.add(currentNodeWithDist);
+		
+		// need to change the comparable interface for toProcess to order by
+		// the value of the key of the hashmap (ascending);
+		
+		while (!toProcess.isEmpty()) {
+			
+			currentNodeWithDist = toProcess.remove();
+			currentNode = (MapIntersection)currentNodeWithDist.keySet().toArray()[0];
+			nodesSearched.accept(currentNode);
+			
+			if (!visited.contains(currentNodeWithDist)) {
+				
+				visited.add(currentNode);
+				
+				if (currentNode.equals(goalNode)) {
+					// call the helper method to return shortest path
+					return codifyPath(startNode, goalNode, roadMap);
+				}
+				
+				currentNeighbors = currentNode.getNeighbors();
+				for (MapEdge neighbor : currentNeighbors) {
+					// initialize values to make the logic easier to read
+					MapIntersection toIntersection = neighbor.getToIntersection();
+					double guessDistance = 
+							distance.get(currentNode) + neighbor.getTravelTime();
+					double currentTotalDistance = distance.get(toIntersection);
+					
+					if (!visited.contains(toIntersection)) {
+						
+						if (guessDistance < currentTotalDistance) {
+							
+							distance.put(toIntersection, guessDistance);
+							roadMap.put(neighbor.getToIntersection(), neighbor);
+							HashMap<MapIntersection, Double> nextNodeWithDist = 
+									new HashMap<MapIntersection, Double>();
+							nextNodeWithDist.put(toIntersection, guessDistance);
+							toProcess.add(nextNodeWithDist);
+						}
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	
+	
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	/** Find the path from start to goal using A-Star search
+	 * 
+	 * @param start: The starting location
+	 * @param goal: The goal location
+	 * @param offLimits: Locations that are not allowed on the path
+	 * @return The shortest path from start to goal (including both start and goal).
+	 */
+	public Path aStarSearch(GeographicPoint start, 
+								  GeographicPoint goal,
+								  HashMap<Double,HashMap<Double,Integer>> offLimits) {
+		// Dummy variable for calling the search algorithms
+        Consumer<GeographicPoint> temp = (x) -> {};
+        return aStarSearch(start, goal, temp, offLimits);
+	}
+	
+	/** Find the path from start to goal using A-Star search
+	 * 
+	 * @param start: The starting location
+	 * @param goal: The goal location
+	 * @param offLimits: Locations that are not allowed on the path
+	 * @param nodeSearched: A hook for visualization.
+	 * @return The shortest path path from  start to goal (including both start and goal).
+	 */
+	public Path aStarSearch(GeographicPoint start, 
+								  GeographicPoint goal,
+								  Consumer<GeographicPoint> nodeSearched,
+								  HashMap<Double,HashMap<Double,Integer>> offLimits) {
+		// if the start or goal do not exist in the graph, return null
+		if ( (graph.get(start.x) == null) ||
+				  (graph.get(start.x).get(start.y) == null) ) {
+			return null;
+		}
+		else if ( (graph.get(goal.x) == null) ||
+				  (graph.get(goal.x).get(goal.y) == null) ) {
+			return null;
+		}
+		
+		// assign the start and goal nodes
+		MapIntersection startNode = graph.get(start.x).get(start.y);
+		MapIntersection goalNode = graph.get(goal.x).get(goal.y);
+
+		// initialize the priority queue to hold distances
+		// of particular paths from startNodes to other nodes.
+		// the priority queue holds hashmaps of "nodes" -> "distance from 
+		// start node following a unique path"
+		// priority is based on the following custom comparator:
+		// paths with shortest distance to start node go first.
+		PriorityQueue<HashMap<MapIntersection, Double>> toProcess = 
+				new PriorityQueue<HashMap<MapIntersection, Double>>(10, new Comparator<HashMap<MapIntersection, Double>>() {
+					public int compare(HashMap<MapIntersection, Double> mapOne, HashMap<MapIntersection, Double> mapTwo) {
+						return ((Double)mapOne.get((MapIntersection)mapOne.keySet().toArray()[0])).compareTo((Double)mapTwo.get((MapIntersection)mapTwo.keySet().toArray()[0]));
+					}
+				});
+		
+		// initialize or declare data structures for: nodes processed, 
+		// processed node parents, current node, current neighbors, 
+		// current best distances to nodes, roads taken, and shortest path to goal
+		HashSet<MapIntersection> visited = new HashSet<MapIntersection>(numberOfVertices*2);
+		HashMap<MapIntersection,MapEdge> roadMap =
+				new HashMap<MapIntersection,MapEdge>(numberOfVertices*2);
+		HashMap<MapIntersection,Double> distances = 
+				new HashMap<MapIntersection, Double>(numberOfVertices*2);
+		HashMap<MapIntersection,Double> currentNodeWithDist;
+		MapIntersection currentNode;
+		List<MapEdge> currentNeighbors;
+		
+		// initialize distance to startNode as 0
+		// and distance to all other nodes as infinity
+		Set<GeographicPoint> allCoordinates = getVertices();
+		for (GeographicPoint coordinate : allCoordinates) {
+			if (coordinate.x == start.x && coordinate.y == start.y) {
+				distances.put(graph.get(coordinate.x).get(coordinate.y), 
+						      0.0);
+			}
+			else {
+				distances.put(graph.get(coordinate.x).get(coordinate.y),
+						      Double.POSITIVE_INFINITY);
+			}
+		}
+		// keep track of parents while doing a Dijkstra BFS with a priority queue
+		currentNodeWithDist = new HashMap<MapIntersection,Double>();
+		currentNodeWithDist.put(startNode, distances.get(startNode));
+		toProcess.add(currentNodeWithDist);
+		
+		// need to change the comparable interface for toProcess to order by
+		// the value of the key of the hashmap (ascending);
+		while (!toProcess.isEmpty()) {
+			
+			currentNodeWithDist = toProcess.remove();
+			currentNode = (MapIntersection)currentNodeWithDist.keySet().toArray()[0];
+			nodeSearched.accept(currentNode);
+			
+			//System.out.println(currentNode + " is the current aStarSearch hop");
+			if (!visited.contains(currentNodeWithDist)) {
+				
+				visited.add(currentNode);
+				
+				if (currentNode.equals(goalNode)) {
+					// call the helper method to return shortest path
+					return codifyPath(startNode, goalNode, roadMap);
+				}
+				
+				currentNeighbors = currentNode.getNeighbors();
+				
+				for (MapEdge neighbor : currentNeighbors) {
+
+					MapIntersection toIntersection = neighbor.getToIntersection();
+					//System.out.println(toIntersection + " is the potential next aStarHop");
+					// it the intersection hasn't been visited and is not off limits,
+					// check if the distance to it is better than the current next distance.
+					boolean xInLimitsMap, yInLimitsMap = false, isOffLimits = false;
+					xInLimitsMap = offLimits.containsKey(toIntersection.getX());
+					if (xInLimitsMap) {
+						yInLimitsMap = offLimits.get(toIntersection.getX()).containsKey(toIntersection.getY());
+						if (yInLimitsMap) {
+							isOffLimits = (offLimits.get(toIntersection.getX()).get(toIntersection.getY())==1);
+						}
+					}
+					//System.out.println(!visited.contains(toIntersection) + " that its not visited");
+					//System.out.println(!isOffLimits + " that its not illegal");
+					if (!visited.contains(toIntersection) && !isOffLimits) {
+						// initialize values to make the logic easier to read
+						double pathFromStartNode = 
+								distances.get(currentNode) + neighbor.getTravelTime();
+						double asCrowFliesToGoalDist = toIntersection.distance(goalNode);
+						double aStarHeurDist = pathFromStartNode + asCrowFliesToGoalDist;
+						double currentDist = distances.get(toIntersection);
+						/*
+						System.out.println("******Start aStar Heuristic Calculation******");
+						System.out.println("Current node is: " + currentNode);
+						System.out.println("Traveled this much so far: " + distances.get(currentNode));
+						System.out.println("Travel time to " + neighbor.getToIntersection() + " is: " + neighbor.getTravelTime());
+						System.out.println("Straight path to goal is: " + asCrowFliesToGoalDist);
+						System.out.println("aStarHeurDist is: " + aStarHeurDist);
+						System.out.println("Current distance is: " + currentDist);
+						*/
+						if (aStarHeurDist < currentDist) {
+							
+							distances.put(toIntersection, aStarHeurDist);
+							roadMap.put(neighbor.getToIntersection(), neighbor);
+							HashMap<MapIntersection, Double> nextNodeWithDist = 
+									new HashMap<MapIntersection, Double>();
+							nextNodeWithDist.put(toIntersection, aStarHeurDist);
+							toProcess.add(nextNodeWithDist);
+							//System.out.println("picked as next: " + toIntersection);
+						}
+						//System.out.println("************************");
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	/** Calculate shortest tour from a start vertex to other vertices.
+	 * 
+	 * Each vertex in the path can only be visited once.
+	 * Solves the Traveling Salesperson Problem using a greedy algorithm.
+	 * 
+	 * @param start: The starting (and ending) location
+	 * @param stops: A list of locations to visit goal
+	 * @param nodeSearched: A hook for visualization.
+	 * @return A list of greedy paths: the first item in the list is the path from
+	 * start to the first stop, the second item in the list is the path from the first
+	 * stop to the second stop, etc.  The last item in the list is the "meta path" --
+	 * including only start and stops (and start again to complete the Hamiltonian path).
+	 */
+	public ArrayList<Path> greedyShortestCycle(GeographicPoint start, 
+							    	List<GeographicPoint> stops,
+								    Consumer<GeographicPoint> nodeSearched,
+								    HashMap<Double,HashMap<Double,Integer>> offLimits) 
+	throws IllegalArgumentException {
+		
+		ArrayList<Path> greedyPaths = new ArrayList<Path>();
+		// throw exception if the start does not exist in the graph
+		if (!nodeCoordinates.contains(start)) {
+			
+			throw new IllegalArgumentException("Start location does not exist in the graph");
+		}
+		
+		// throw exception if any stops do not exist in the graph, return null
+		for (GeographicPoint stop : stops) {
+			if (!nodeCoordinates.contains(stop)) {
+				
+				throw new IllegalArgumentException("Stop " + stop + " does not exist in the graph");
+			}
+			// if any stops are the start, throw an exception
+			if (stop.equals(start)) {
+				
+				throw new IllegalArgumentException("One of the stops is the same as the start");
+			}
+		}
+		
+		List<GeographicPoint> shortestCycle = 
+				new ArrayList<GeographicPoint>(stops.size()+2);
+		List<MapEdge> cycleRoadsTaken = 
+				new ArrayList<MapEdge>();
+		List<MapIntersection> toVisit = 
+				new ArrayList<MapIntersection>(stops.size());
+		
+		MapIntersection current, bestNext = null;
+		Path potentialNextPath, shortestNextPath;
+
+		double totalLength = 0, totalTravelTime = 0;
+		
+		if (start instanceof MapIntersection) {
+			current = (MapIntersection)start;
+			HashMap<Double,Integer> offLimitsY = new HashMap<Double,Integer>();
+			double startX = graph.get(start.getX()).get(start.getY()).getX();
+			double startY = graph.get(start.getX()).get(start.getY()).getY();
+			if (offLimits.containsKey(startX)) {
+				offLimits.put(startX, offLimitsY);
+			}
+			else {
+				offLimitsY.put(startY, 1);
+				offLimits.put(startX, offLimitsY);
+			}
+		}
+		else {
+			current = graph.get(start.x).get(start.y);
+			HashMap<Double,Integer> offLimitsY = new HashMap<Double,Integer>();
+			double startX = graph.get(start.getX()).get(start.getY()).getX();
+			double startY = graph.get(start.getX()).get(start.getY()).getY();
+			if (offLimits.containsKey(startX)) {
+				offLimits.put(startX, offLimitsY);
+			}
+			else {
+				offLimitsY.put(startY, 1);
+				offLimits.put(startX, offLimitsY);
+			}
+		}
+		
+		// add MapIntersections instead of GeographicPoints if possible
+		if (stops.get(0) instanceof MapIntersection) {
+			for (GeographicPoint stop : stops) {
+				toVisit.add((MapIntersection)stop);
+				HashMap<Double,Integer> offLimitsY = new HashMap<Double,Integer>();
+				double stopX = graph.get(stop.getX()).get(stop.getY()).getX();
+				double stopY = graph.get(stop.getX()).get(stop.getY()).getY();
+				if (offLimits.containsKey(stopX)) {
+					offLimits.put(stopX, offLimitsY);
+				}
+				else {
+					offLimitsY.put(stopY, 1);
+					offLimits.put(stopX, offLimitsY);
+				}
+			}
+		}
+		else {
+			for (GeographicPoint stop : stops) {
+				toVisit.add(graph.get(stop.x).get(stop.y));
+				HashMap<Double,Integer> offLimitsY = new HashMap<Double,Integer>();
+				double stopX = graph.get(stop.getX()).get(stop.getY()).getX();
+				double stopY = graph.get(stop.getX()).get(stop.getY()).getY();
+				if (offLimits.containsKey(stopX)) {
+					offLimits.put(stopX, offLimitsY);
+				}
+				else {
+					offLimitsY.put(stopY, 1);
+					offLimits.put(stopX, offLimitsY);
+				}
+			}
+		}
+		
+		shortestCycle.add(current);
+		
+		while (toVisit.size() > 0) {
+			
+			shortestNextPath = null;
+			//System.out.println("stops left to visit: " + toVisit.size());
+			// greedily go to closest vertex from the vertices left visit
+			for (MapIntersection potentialNext : toVisit) {
+				
+				//System.out.println(current + " is current stop in tour");
+				//System.out.println(potentialNext + " is potential next stop in tour");
+				offLimits.get(potentialNext.getX()).put(potentialNext.getY(), 0);
+				potentialNextPath = aStarSearch(current, potentialNext, offLimits);
+				offLimits.get(potentialNext.getX()).put(potentialNext.getY(), 1);
+				if (potentialNextPath != null) {
+					//System.out.println(potentialNextPath.getPath() + 
+						//			   " is potential next path in tour");					
+					if ( (shortestNextPath == null) || 
+							 (potentialNextPath.getTravelTime() < 
+							  shortestNextPath.getTravelTime()) ) {
+							//System.out.println("Best is now: " + potentialNextPath.getTravelTime());
+							bestNext = potentialNext;
+							shortestNextPath = potentialNextPath;
+							//System.out.println(shortestNextPath.getPath() + 
+								//			   " is the next path in tour");
+						}
+				}
+			}
+			// add each hop except first (first is already added)
+			for (int i = 1; i < shortestNextPath.getPath().size(); i++) {
+						
+				shortestCycle.add(shortestNextPath.getPath().get(i));	
+				cycleRoadsTaken.add(shortestNextPath.getRoadsTaken().get(i-1));
+			}
+			// save the path between hops at the appropriate place in the return ArrayList
+			greedyPaths.add(shortestNextPath);
+			totalLength += shortestNextPath.getLength();
+			totalTravelTime += shortestNextPath.getTravelTime();
+			toVisit.remove(bestNext);
+			current = bestNext;
+		}
+		// start is no longer off limits (need to complete the cycle)
+		offLimits.get(start.getX()).put(start.getY(), 0);
+		shortestNextPath = aStarSearch(current, start, offLimits);
+		greedyPaths.add(shortestNextPath);
+		
+		totalLength += shortestNextPath.getLength();
+		totalTravelTime += shortestNextPath.getTravelTime();
+		
+		for (int i = 1; i < shortestNextPath.getPath().size(); i++) {
+
+			shortestCycle.add(shortestNextPath.getPath().get(i));
+		}
+		
+		Path shortestCycleObject = 
+				new Path(shortestCycle, cycleRoadsTaken, totalLength, totalTravelTime);
+		greedyPaths.add(shortestCycleObject);
+		
+		printPathInfo(totalLength, totalTravelTime, shortestCycleObject,
+					  start, stops, greedyPaths);
+		
+		return greedyPaths;
+	}
+	
+	/** Calculate shortest tour from a start vertex to other vertices.
+	 * 
+	 * Each vertex in the path can only be visited once.
+	 * Solves the Traveling Salesperson Problem using a greedy algorithm.
+	 * 
+	 * @param start: The starting (and ending) location
+	 * @param stops: A list of locations to visit goal
+	 * @return A list of greedy paths: the first item in the list is the path from
+	 * start to the first stop, the second item in the list is the path from the first
+	 * stop to the second stop, etc.  The last item in the list is the "meta path" --
+	 * including only start and stops (and start again to complete the Hamiltonian path).
+	 */
+	public ArrayList<Path> greedyShortestCycle(GeographicPoint start,
+									List<GeographicPoint> stops,
+									HashMap<Double,HashMap<Double,Integer>> offLimits) {
+		// Dummy variable for calling the search algorithms
+        Consumer<GeographicPoint> temp = (x) -> {};
+        return greedyShortestCycle(start, stops, temp, offLimits);
+	}
+	
+	/** Calculate shortest tour from a start vertex to other vertices.
+	 * 
+	 * Each vertex in the path can only be visited once.
+	 * Solves the Traveling Salesperson Problem using a 2-opt algorithm to 
+	 * iteratively improve upon a greedy algorithm.  This method allows multiple
+	 * uses of the same edge.
+	 * 
+	 * @param start: The starting (and ending) location
+	 * @param stops: A list of locations to visit goal
+	 * @return The shortest tour from start that visits each stop exactly once.
+	 */
+	public ArrayList<Path> twoOptShortestCycle(GeographicPoint start,
+									List<GeographicPoint> stops,
+									HashMap<Double,HashMap<Double,Integer>> offLimits) {
+		
+		Path shortestCycle;
+		ArrayList<Path> greedyPaths;
+
+		greedyPaths = greedyShortestCycle(start, stops, offLimits);
+		shortestCycle = greedyPaths.get(greedyPaths.size()-1);
+
+		if ( (stops.size() + 1) < 4 ) {
+			
+			return greedyPaths;
+		}
+		
+		// PathObjects have an ordered list of ALL intersections in the tour,
+		// but it is useful to have an ordered list of just the stops in the tour.
+		ArrayList<GeographicPoint> metaPath = new ArrayList<GeographicPoint>();
+		metaPath.add(start);
+		for (GeographicPoint location: shortestCycle.getPath()) {
+			
+			if (stops.contains(location)) {
+				metaPath.add(location);
+				if (offLimits.containsKey(location.getX())) {
+					offLimits.get(location.getX()).put(location.getY(), 1);
+				}
+				else {
+					HashMap<Double,Integer> yCoords = new HashMap<Double,Integer>();
+					offLimits.put(location.getX(), yCoords);
+					offLimits.get(location.getX()).put(location.getY(), 1);
+				}
+			}
+		}
+		metaPath.add(start);
+		// start should be off limits when finding better paths via two-opt
+		offLimits.get(start.getX()).put(start.getY(), 1);
+		greedyPaths = twoOptChecking(start, stops, greedyPaths, metaPath, offLimits);
+		
+		printPathInfo(greedyPaths.get(greedyPaths.size()-1).getLength(),
+					  greedyPaths.get(greedyPaths.size()-1).getTravelTime(),
+					  greedyPaths.get(greedyPaths.size()-1),
+					  start,
+					  stops,
+					  greedyPaths);
+		
+		return greedyPaths;
+	}
+	
+	/** Check possible 2-opt combinations of edges for shorter length.
+	 * 
+	 * Helper method for twoOptShortestCycle.
+	 * 
+	 * @param greedyPaths: The current shortest paths, with the total path as the last entry
+	 * @param metaPath: A list of just the stops in the current shortest order
+	 * @param shortestCycle 
+	 * @return The shortest tour from start that visits each stop exactly once.
+	 */
+	public ArrayList<Path> twoOptChecking(GeographicPoint start,
+									 List<GeographicPoint> stops,
+									 ArrayList<Path> greedyPaths,
+									 ArrayList<GeographicPoint> metaPath,
+									 HashMap<Double,HashMap<Double,Integer>> offLimits) {
+		
+		GeographicPoint startEdgeOne, endEdgeOne, startEdgeTwo, endEdgeTwo;
+		Path newPathOne, newPathTwo, reversePath;
+		double oldTimeOne, oldTimeTwo, origTime, 
+			   newTimeOne, newTimeTwo, swapTime,
+			   oldLengthOne, oldLengthTwo, origLength,
+			   newLengthOne, newLengthTwo, swapLength;
+		
+		/*System.out.println("Before switch meta path is: ");
+		for (int x = 0; x < metaPath.size(); x++) {
+			System.out.println(metaPath.get(x));
+		}
+		*/
+		
+		edgeOne:
+		for (int i = 0; i < metaPath.size()-3; i++) {
+			
+			startEdgeOne = metaPath.get(i);
+			endEdgeOne = metaPath.get(i+1);
+			
+			for (int j = i+2; j < metaPath.size()-1; j++) {
+				
+				startEdgeTwo = metaPath.get(j);
+				endEdgeTwo = metaPath.get(j+1);
+				
+				if ( !( (i == 0) && (j == metaPath.size()) ) ) {
+					
+					// can decide if the new path is a better path based on 
+					// length or travel time. currently decided by travel time
+					oldTimeOne = greedyPaths.get(i).getTravelTime();
+					oldLengthOne = greedyPaths.get(i).getLength();
+					
+					oldTimeTwo = greedyPaths.get(j).getTravelTime();
+					oldLengthTwo = greedyPaths.get(j).getLength();
+					
+					origTime = oldTimeOne + oldTimeTwo;
+					origLength = oldLengthOne + oldLengthTwo;
+					
+					offLimits.get(startEdgeTwo.getX()).put(startEdgeTwo.getY(), 0);
+					newPathOne = aStarSearch(startEdgeOne, startEdgeTwo, offLimits);
+					offLimits.get(startEdgeTwo.getX()).put(startEdgeTwo.getY(), 1);
+					newTimeOne = newPathOne.getTravelTime();
+					newLengthOne = newPathOne.getLength();
+					
+					offLimits.get(endEdgeTwo.getX()).put(endEdgeTwo.getY(), 0);
+					newPathTwo = aStarSearch(endEdgeOne, endEdgeTwo, offLimits);
+					offLimits.get(endEdgeTwo.getX()).put(endEdgeTwo.getY(), 1);
+					newTimeTwo = newPathTwo.getTravelTime();
+					newLengthTwo = newPathTwo.getLength();
+					
+					swapTime = newTimeOne + newTimeTwo;
+					swapLength = newLengthOne + newLengthTwo;
+					
+					if (swapTime < origTime) {
+						
+						double swapTimeSave, forwardTime, reverseTime, reverseTimeGain,
+							   swapLengthSave, forwardLength, reverseLength, reverseLengthGain;
+						
+						swapTimeSave = origTime - swapTime;
+						swapLengthSave = origLength - swapLength;
+						// calculate needed reverse paths, which could be
+						// different because of, for example, one way streets.
+						forwardTime = 0;
+						reverseTime = 0;
+						forwardLength = 0;
+						reverseLength = 0;
+						
+						ArrayList<Path> reversePathObjects = 
+								new ArrayList<Path>();
+						
+						for (int k = j; k > i+1; k--) {
+							
+							forwardTime += greedyPaths.get(k-1).getTravelTime();
+							forwardLength += greedyPaths.get(k-1).getLength();
+							offLimits.get(metaPath.get(k-1).getX()).put(metaPath.get(k-1).getY(), 0);
+							reversePath = aStarSearch(metaPath.get(k), 
+													  metaPath.get(k-1),
+													  offLimits);
+							offLimits.get(metaPath.get(k-1).getX()).put(metaPath.get(k-1).getY(), 1);
+							reverseTime += reversePath.getTravelTime();
+							reverseLength += reversePath.getLength();
+							reversePathObjects.add(reversePath);
+						}
+						
+						reverseTimeGain = reverseTime - forwardTime;
+						reverseLengthGain = reverseLength - forwardLength;
+						// compare the time gained by the reverse path to the
+						// time saved by the swap.  if we saved more, make this
+						// 2-opt the new greedyPath (which involves setting both
+						// the 2-opt paths and the new reverse paths for each of:
+						// 1) the meta path, 2) the sub paths, and 3) the total path).
+						// this is the place to change the decision to length, if wanted.
+						if (swapTimeSave > reverseTimeGain) {
+							
+							System.out.println("Swapping in " + 
+											   newPathOne.getRoadsTaken().get(0).getRoadName() + " for " + 
+											   greedyPaths.get(i).getRoadsTaken().get(0).getRoadName());
+							System.out.println("Swapping in " + 
+											   newPathTwo.getRoadsTaken().get(0).getRoadName() + " for " +
+											   greedyPaths.get(j).getRoadsTaken().get(0).getRoadName());
+							// set the new sub path, and total path
+							//metaPath.set(i+1, newPathOne.getPath().get(0));
+							
+							for (int k = i; k < j+1; k++) {
+								
+								//System.out.println("i is " + i);
+								//System.out.println("j is " + j);
+								//System.out.println("k is " + k);
+								if (k == i) {
+									//System.out.println("Set the new path one");
+									greedyPaths.set(k, newPathOne);
+								}
+								else if (k == j) {
+									//System.out.println("Set the new path two");
+									//metaPath.set(i+1+iters, newPathTwo.getPath().get(0));
+									greedyPaths.set(k, newPathTwo);
+								}
+								else {
+									//System.out.println("Set a reverse path");
+									//System.out.println("size of reverse paths is " + 
+									//				   reversePathObjects.size());
+									//metaPath.set(i+1+iters, reversePathObjects.get(0).getPath().get(0));
+									greedyPaths.set(k, reversePathObjects.remove(0));
+								}
+							}
+							
+							// construct the new total path				
+							int totalPathIndex = greedyPaths.size()-1;
+							
+							List<GeographicPoint> totalPath = new ArrayList<GeographicPoint>();
+							List<MapEdge> totalRoadList = new ArrayList<MapEdge>();
+							
+							double totalPathLength = greedyPaths.get(totalPathIndex).getLength();
+							totalPathLength = totalPathLength + reverseLengthGain - swapLengthSave;
+							
+							double totalPathTime = greedyPaths.get(totalPathIndex).getTravelTime();
+							totalPathTime = totalPathTime + reverseTimeGain - swapTimeSave;
+							
+							for (int k = 0; k < totalPathIndex; k++) {
+								
+								for (int m = 0; m < greedyPaths.get(k).getPath().size()-1; m++) {
+									
+									totalPath.add(greedyPaths.get(k).getPath().get(m));
+									totalRoadList.add(greedyPaths.get(k).getRoadsTaken().get(m));
+								}
+							}
+							// add start to complete the cycle
+							totalPath.add(greedyPaths.get(0).getPath().get(0));
+							
+							Path totalPathObject = 
+									new Path(totalPath, 
+												   totalRoadList, 
+												   totalPathLength,
+												   totalPathTime);
+							
+							greedyPaths.set(greedyPaths.size()-1, totalPathObject);
+							
+							metaPath = constructMetaPath(start, stops, greedyPaths);
+							/* System.out.println("After switch meta path is: ");
+							for (int x = 0; x < metaPath.size(); x++) {
+								System.out.println(metaPath.get(x));
+							}
+							*/
+							// do twoOptChecking with the new best path
+							System.out.println("swap");
+							System.out.println("info after swap: ");
+							printPathInfo(totalPathLength, 
+									      totalPathTime, 
+									      totalPathObject,
+									      start,
+									      stops,
+									      greedyPaths);
+							
+							greedyPaths = twoOptChecking(start, 
+														 stops,
+													     greedyPaths,
+														 metaPath, 
+														 offLimits);
+							break edgeOne;
+						}
+					}
+				}
+			}
+		}
+		return greedyPaths;
+	}
+	
+	/** Construct a "meta" path from a starting point, a list of "meta" stops, and a list of 
+	 * the entire path (with each item in the list a path from one stop to another and the 
+	 * last item in the list being the total path with all stops). 
+	 * 
+	 * Throws an IllegalArgumentException if one of the desired "meta" stops is not on the 
+	 * longer path.
+	 * 
+	 * Useful for answering questions like "Along this complicated, long path, in what order
+	 * do we visit A, B, C, and D?"
+	 * 
+	 * @param start: The starting location for the meta path
+	 * @param metaStops: A list of locations that are in the longer path
+	 * @param totalPathList: A list of path objects that comprise the total path 
+	 * @return The "meta" path with the sequential ordering of each item in metaStops.
+	 */
+	public ArrayList<GeographicPoint> constructMetaPath(GeographicPoint start,
+														List<GeographicPoint> metaStops,
+														List<Path> totalPathList) 
+	throws IllegalArgumentException {
+		
+		ArrayList<GeographicPoint> metaPath = new ArrayList<GeographicPoint>();
+		List<GeographicPoint> totalPath = 
+				totalPathList.get(totalPathList.size()-1).getPath();
+		List<GeographicPoint> metaStopsCopy = new ArrayList<GeographicPoint>();
+		GeographicPoint currentClone;
+		
+		for (int i = 0; i < metaStops.size(); i++) {
+			currentClone = (GeographicPoint)metaStops.get(i).clone();
+			metaStopsCopy.add(currentClone);
+		}
+		
+		//System.out.println("There are " + metaStops.size() + " stops to account for");
+		
+		metaPath.add(start);
+		for (GeographicPoint hop : totalPath) {
+			
+			if (metaStopsCopy.contains(hop)) {
+				metaPath.add(hop);
+				metaStopsCopy.remove(hop);
+				//System.out.println("added " + hop + " to the metaPath");
+			}	
+		}
+		metaPath.add(start);
+
+		if (metaStopsCopy.size() > 0) {
+			throw new IllegalArgumentException("One of the meta stops is not on the total path");
+		}
+		
+		return metaPath;
+	}
+	
+	public void printPathInfo(double totalLength,
+							  double totalTravelTime,
+							  Path shortestCycleObject,
+							  GeographicPoint start,
+							  List<GeographicPoint> stops,
+							  List<Path> greedyPaths) {
+		
+		System.out.println("********PRINTING PATH INFO********");
+		System.out.println("Total distance traveled is: " + totalLength + " miles");
+		System.out.println("Total travel time is: " + totalTravelTime + " minutes");
+		System.out.println("Stops in order is: ");
+		
+		for (int i = 0; i < shortestCycleObject.getPath().size(); i++) {
+			if ( shortestCycleObject.getPath().get(i).equals(start) ||
+				 stops.contains(shortestCycleObject.getPath().get(i)) ) {
+		
+				System.out.print("(" + shortestCycleObject.getPath().get(i).getX() + 
+						 "," + shortestCycleObject.getPath().get(i).getY() + ")");
+				
+				if (i < shortestCycleObject.getPath().size()-1){
+					
+					System.out.print( " -> ");
+				}
+			}
+		}
+		System.out.println("");
+		
+		System.out.println("Total path is: ");
+		for (int i = 0; i < greedyPaths.size(); i++) {
+			
+			if (i < greedyPaths.size()-1) {
+				
+				for (int j = 0; j < greedyPaths.get(i).getPath().size()-1; j++) {
+					
+					System.out.print("(" + greedyPaths.get(i).getPath().get(j).getX() + 
+									 "," + greedyPaths.get(i).getPath().get(j).getY() + 
+									 ") take ");
+					System.out.print(greedyPaths.get(i).getRoadsTaken().get(j).getRoadName() +
+									 " to -> ");
+				}
+			}
+			else {
+				
+				System.out.print("(" + greedyPaths.get(i).getPath().get(0).getX() + 
+						         "," + greedyPaths.get(i).getPath().get(0).getY() + ")");
+				System.out.println("");
+			}
+		}
+		System.out.println("********FINISHED PRINTING PATH INFO********");
+	}
+	
+	public static void main(String[] args) {
+		System.out.print("Making a new map...");
+		mainDatastructure theMap = new mainDatastructure();
+		System.out.print("DONE. \nLoading the map...");
+		GraphLoader.loadRoadMap("data/testdata/simpletest.map", theMap);
+		System.out.println("DONE.");
+		
+
+		
+	}
+	
+}

@@ -22,6 +22,13 @@ The initial commit for this repository is the starter code as described in the s
 4. Modified the GUI to accept seven stops instead of just one.
 5. Wrote tests to Cases to ensure the data is accurate 
 
+BFS Alfo demo below:
+
+![BFS Viz](https://user-images.githubusercontent.com/28630022/105339294-5d61ad00-5b91-11eb-928f-3baf400e1c90.png)
+
+DFS Algo demo below:
+
+
 A-Star Algo demo below: 
 
 ![aStar Viz](https://user-images.githubusercontent.com/28630022/105339065-2095b600-5b91-11eb-857e-93aba4b73bee.png)

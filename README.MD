@@ -16,9 +16,12 @@ The user can select a pre-loaded map, load their own map, select a start locatio
 
 The initial commit for this repository is the starter code as described in the section below.  All subsequent commits are my (Ryan Connor’s) work.  I:
 
-1. Implemented the Main datastructure behind the the shortest path finding : BFS(by Royali) and Dijksta algorithm(by Arjun Singh) in MapEdge.java class 
+1. Implemented the Main datastructure behind the the shortest path finding : BFS and Dijksta algorithm in MapEdge.java class 
 2. Creating the custom map using the fecth data for  data testing 
 3. Gui moified to have 3 stop points instead of two 
 4. Modified the GUI to accept seven stops instead of just one.
 5. Wrote tests to Cases to ensure the data is accurate 
 
+A-Star Algo demo below: 
+
+![aStar Viz](https://user-images.githubusercontent.com/28630022/105339065-2095b600-5b91-11eb-857e-93aba4b73bee.png)
